@@ -1,0 +1,98 @@
+from selenium import webdriver
+import time
+import re
+import requests
+import pymongo
+
+headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.113 Safari/537.36'
+}
+def get_url(url):
+
+    driver = webdriver.Chrome()  # 启动谷歌浏览器
+    driver.get(url)  # 发出请求
+
+    # 定位登陆窗口
+    iframe = driver.find_element_by_tag_name("iframe")
+    driver.switch_to.frame(iframe)
+    # 定位密码登录模式位置并点击切换到密码登录模式
+    driver.find_element_by_xpath('//ul[@class="tab-start"]/li[2]').click()
+
+    # 定位账号输入文本框并输入账号信息至文本框
+    driver.find_element_by_id('username').send_keys('18579218484')
+
+    time.sleep(2)
+    # 定位密码输入文本框并输入密码信息至文本框
+    driver.find_element_by_id('password').send_keys('a963852741')
+
+    # 定位 登录豆瓣 按钮并进行点击
+    time.sleep(2)
+    driver.find_element_by_class_name('account-form-field-submit ').click()
+
+    driver.get('https://www.douban.com/')
+    # 定位 豆瓣读书 按钮并进行点击
+    time.sleep(2)
+    driver.find_element_by_css_selector('#db-global-nav > div > div.global-nav-items > ul > li:nth-child(2) > a').click()
+
+    driver.window_handles  # 查看selenium所启动的所有窗口
+    driver.switch_to.window(driver.window_handles[1])  # 移动到第二个窗口
+    #定位 新书速递更多按钮 并进行点击
+    driver.find_element_by_css_selector('#content > div > div.article > div.section.books-express > div.hd > h2 > span.link-more > a').click()
+    html = driver.page_source   #提取网页源码
+
+    urls = re.findall('<h2>\n.*?<a href="(.*?)">.*?</a>\n.*?</h2>', html)   #获得图书的url
+    for url in urls:
+        time.sleep(2)
+        get_info(url)
+
+
+def get_info(url):
+
+    response = requests.get(url, headers=headers).text
+    #作者
+    author = re.findall(
+        '<a class="" href=.*?>(.*?)</a>\n    </span><br/>\n\n    \n    \n  \n    <span class="pl">出版社:</span>',
+        response)[0]
+    # 出版社
+    publish = re.findall('<span class="pl">出版社:</span> (.*?)<br/>', response)[0]
+    #出版时间
+    time = re.findall('<span class="pl">出版年:</span>(.*?)<br/>', response)[0]
+    #书名
+    name = re.findall('<span property="v:itemreviewed">(.*?)</span>', response)[0]
+    #简介
+    introduction = re.findall('<div class="intro">\n    <p>(.*?)</p></div>', response)[0]
+    # 评论数,因不同书籍评论数不用，会出现数字的评论数、显示评价人数不足或暂无评论的字符串，
+    # 所以用comments函数进行判断并获取数据
+    comment = comments(response)
+    data = {
+        '作者': author,
+        '书名': name,
+        '出版社': publish,
+        '出版时间': time,
+        '简介': introduction,
+        '评论数': comment
+    }
+    print(data)
+    client = pymongo.MongoClient('localhost', 27017)  # 链接数据库
+    db = client['mydb']  # 创建数据库mydb
+    book_news = db.new_book  # 在数据库mydb里面创建表new_book
+    book_news.insert_one(dict(data))  # 字典格式的数据导入mongodb数据库的work表中
+
+# 获取评论数
+def comments(response):
+    comments = re.findall('''<div class="rating_sum">\n.*?<span class="">\n.*?(.*?)\n.*?</span>''', response)[0].strip()
+
+    comment_bool = bool(re.search(r'\d', comments))
+    if (comment_bool):
+        comment = re.findall(r'\d+', comments)[0]
+        return comment
+    else:
+        pattern = re.compile(r'[\u4e00-\u9fa5]+')
+        comment = pattern.findall(comments)
+        return comment
+
+if __name__ == '__main__':
+    url = 'https://www.douban.com/'
+    get_url(url)
+
+
