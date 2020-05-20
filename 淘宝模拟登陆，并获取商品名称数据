@@ -20,7 +20,7 @@ def get_url(url):
     driver.find_element_by_id('fm-login-id').send_keys('账号')
     time.sleep(2)
     # 定位密码输入文本框并输入密码信息至文本框
-    driver.find_element_by_id('fm-login-password').send_keys('账号')
+    driver.find_element_by_id('fm-login-password').send_keys('密码')
     time.sleep(2)
 
 
