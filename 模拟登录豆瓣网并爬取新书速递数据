@@ -48,7 +48,6 @@ def get_url(url):
 
 
 def get_info(url):
-
     response = requests.get(url, headers=headers).text
     #作者
     author = re.findall(
