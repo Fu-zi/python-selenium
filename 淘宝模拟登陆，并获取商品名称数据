@@ -1,0 +1,80 @@
+from selenium import webdriver
+from selenium.webdriver.common.action_chains import ActionChains
+import time
+import pymongo
+import re
+
+def get_url(url):
+    #打开搜索页面窗口
+    driver = webdriver.Chrome()  # 启动谷歌浏览器
+    driver.get(url)  # 发出请求
+    driver.implicitly_wait(10)   # 隐式等待,显示等待搜索页面全部渲染完成
+    # 定位搜索框并输入搜索关键词
+    driver.find_element_by_css_selector('#q').send_keys('2020新款女装')
+    driver.find_element_by_xpath('//*[@id="J_TSearchForm"]/div[1]/button').click() #模拟单击
+
+    time.sleep(2)
+    driver.switch_to.window(driver.window_handles[0])
+    driver.implicitly_wait(10)
+    # 定位账号输入文本框并输入账号信息至文本框
+    driver.find_element_by_id('fm-login-id').send_keys('账号')
+    time.sleep(2)
+    # 定位密码输入文本框并输入密码信息至文本框
+    driver.find_element_by_id('fm-login-password').send_keys('账号')
+    time.sleep(2)
+
+
+    #验证码滑块
+    button = driver.find_element_by_id('nc_1_n1z')    # 找到“滑块”
+    action = ActionChains(driver)            # 实例化一个action对象
+    action.click_and_hold(button).perform()  # perform()用来执行ActionChains中存储的行为
+    action.reset_actions()
+    action.move_by_offset(258, 0).perform()  # 移动滑块
+
+    # 点击登录按钮
+    driver.find_element_by_css_selector('#login-form > div.fm-btn > button').click()
+    time.sleep(2)
+
+    #进入2020新款女装界面
+    driver.switch_to.window(driver.window_handles[0])   # 移动到第二个窗口
+    driver.implicitly_wait(10)
+    html = driver.page_source       #提取网页源码
+
+    get_info(html)
+
+#商品价格、付款人数、商品名称和地址
+def get_info(html):
+    client = pymongo.MongoClient('localhost', 27017)  # 链接数据库
+    db = client['mydb']  # 创建数据库mydb
+    book_news = db.goods  # 在数据库mydb里面创建表 goods
+    #商品名称
+    names = re.findall(
+            '<span class="baoyou-intitle icon-service-free"></span>\n.*?\n.*?(.*?)\n.*?</a>',
+            html)
+    #商品价格
+    prices = re.findall('<span>¥</span><strong>(.*?)</strong>', html)
+    #付款人数
+    payer_numbers = re.findall('<div class="deal-cnt">(.*?)</div>', html)
+    #商家地址
+    address = re.findall('<div class="location">(.*?)</div>', html)
+
+    for name_1, price, payer_number, addres in zip(names, prices, payer_numbers, address):
+        name = html_sub(name_1)         #调用html_sub函数
+        data = {
+            '商品名字': name,
+            '商品价格': price,
+            '购买人数': payer_number,
+            '商家地址': addres
+        }
+        print(data)
+        book_news.insert_one(dict(data))  # 字典格式的数据导入mongodb数据库的goods表中
+
+#去除所有html标签函数
+def html_sub(str):
+    str_first = re.sub('<.*?>', "", str)  # 匹配所有html标签并用""代替
+    text = str_first.replace('/n', "")  # 将换行符替换成空
+    return text.split()[0]
+
+if __name__ == '__main__':
+    url = 'https://www.taobao.com/'
+    get_url(url)
